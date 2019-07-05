@@ -54,6 +54,7 @@ class CustomDataset(Dataset):
                  seg_prefix=None,
                  seg_scale_factor=1,
                  extra_aug=None,
+                 aug_type='default',
                  resize_keep_ratio=True,
                  test_mode=False):
         # prefix of images path
@@ -121,7 +122,7 @@ class CustomDataset(Dataset):
 
         # if use extra augmentation
         if extra_aug is not None:
-            self.extra_aug = ExtraAugmentation(**extra_aug)
+            self.extra_aug = ExtraAugmentation(aug_type, **extra_aug)
         else:
             self.extra_aug = None
 

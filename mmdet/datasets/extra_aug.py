@@ -1,8 +1,9 @@
 import mmcv
 import numpy as np
 from numpy import random
-
+from mmcv.runner import obj_from_dict
 from mmdet.core.evaluation.bbox_overlaps import bbox_overlaps
+import albumentations as A
 
 
 class PhotoMetricDistortion(object):
@@ -91,7 +92,9 @@ class Expand(object):
 
 class RandomCrop(object):
 
-    def __init__(self, min_ious=(0.1, 0.3, 0.5, 0.7, 0.9), min_crop_size=0.3):
+    def __init__(self,
+                 min_ious=(0.1, 0.3, 0.5, 0.7, 0.9),
+                 min_crop_size=0.3):
         # 1: return ori img
         self.sample_mode = (1, *min_ious, 0)
         self.min_crop_size = min_crop_size
@@ -143,21 +146,42 @@ class RandomCrop(object):
 
 class ExtraAugmentation(object):
 
-    def __init__(self,
-                 photo_metric_distortion=None,
-                 expand=None,
-                 random_crop=None):
-        self.transforms = []
-        if photo_metric_distortion is not None:
-            self.transforms.append(
-                PhotoMetricDistortion(**photo_metric_distortion))
-        if expand is not None:
-            self.transforms.append(Expand(**expand))
-        if random_crop is not None:
-            self.transforms.append(RandomCrop(**random_crop))
+    def __init__(self, aug_type, **kwargs):
+        self.type = aug_type
+
+        if self.type is 'albu':
+            self.transforms = self.albu_transform_from_dict(**kwargs)
+        else:
+            self.transforms = self.default_transform_from_dict(**kwargs)
+
+    def albu_transform_from_dict(self, **kwargs):
+        if 'transforms' in kwargs:
+            kwargs['transforms'] = [self.albu_transform_from_dict(**transform) for transform in kwargs['transforms']]
+        return obj_from_dict(kwargs, A)
+
+    def default_transform_from_dict(self, **kwargs):
+        transform = []
+        if 'photo_metric_distortion' in kwargs:
+            transform.append(
+                PhotoMetricDistortion(**kwargs['photo_metric_distortion']))
+        if 'expand' in kwargs:
+            transform.append(Expand(**kwargs['expand']))
+        if 'random_crop' in kwargs:
+            transform.append(RandomCrop(**kwargs['random_crop']))
+        return transform
 
     def __call__(self, img, boxes, labels):
-        img = img.astype(np.float32)
-        for transform in self.transforms:
-            img, boxes, labels = transform(img, boxes, labels)
-        return img, boxes, labels
+        if self.type is 'albu':
+            annotations = {
+                'image': img,
+                'bboxes': boxes,
+                'category_id': labels
+            }
+            data = self.transforms(**annotations)
+            return data['image'], np.array(data['bboxes'], dtype=np.float32), np.array(data['category_id'],
+                                                                                       dtype=np.int64)
+        else:
+            img = img.astype(np.float32)
+            for transform in self.transforms:
+                img, boxes, labels = transform(img, boxes, labels)
+            return img, boxes, labels
